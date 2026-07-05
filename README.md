@@ -13,6 +13,10 @@ indicating which direction is safe to fly.
 - `data/meta.json` — dataset registry read by the training script
 - `data/images/` — put training images here
 - `data/train.jsonl` — one JSON object per line (see format below)
+- `data_collection/` — AirSim (Blocks) manual data collection pipeline: fly with keyboard
+  (`collect_flight_frames.py`), batch-label with DepthAnythingV2 (`process_flight_frames.py`),
+  and spawn a dense obstacle field to fly through (`spawn_obstacles.py`, see
+  `data_collection/OBSTACLE_CONFIG.md` for the drone/obstacle size reference and current settings)
 
 ## Data format
 Each line of `data/train.jsonl`:
