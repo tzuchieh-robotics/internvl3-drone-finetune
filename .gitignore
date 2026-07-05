@@ -1,0 +1,7 @@
+work_dirs/
+data/images/*
+!data/images/.gitkeep
+data/train.jsonl
+__pycache__/
+*.pyc
+.DS_Store
