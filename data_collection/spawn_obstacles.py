@@ -3,7 +3,9 @@ Clears previously spawned obstacles and spawns a structured obstacle course:
 the flight corridor (x: X_START..X_END) is cut into zones, each randomly
 assigned one of three layouts:
   - "maze":  a series of walls perpendicular to the flight path, each with a
-             single gap at a random Y position (classic slalom/maze corridor)
+             single gap that alternates side (left/right of centerline) every
+             gate, so there's never a straight line down the middle -- a real
+             zigzag/slalom corridor
   - "forest": sparse tall, thin cylinders (tree trunks) to weave between
   - "open":  the old moderate-density random scatter (some min-spacing,
              ~15% allowed to overlap/cluster)
@@ -20,7 +22,8 @@ import cosysairsim as airsim
 X_START, X_END = 10, 800
 ZONE_LENGTH = 80
 CORRIDOR_Y_RANGE = (-40, 40)   # wall/tree extents live in this band
-GAP_CENTER_RANGE = (-15, 15)   # maze gaps stay close to the centerline: local dodges, not big detours
+GAP_SIDE_OFFSET = (10, 20)     # gap center's distance from the centerline, alternating left/right
+                               # each gate -- keeps any straight line down the middle blocked
 OPEN_Y_RANGE = (-40, 40)       # narrowed from +-400 so "open" obstacles are actually near the flight path
                                # instead of scattered somewhere a mostly-straight flight would never reach
 Z_RANGE = (-30, -2)            # NED; nominal flight altitude is -8
@@ -94,11 +97,13 @@ def spawn_box(x, y, z, scale_xyz, asset="Cube"):
 
 def spawn_maze_zone(x0, x1):
     x = x0 + MAZE_GATE_SPACING / 2
+    side = random.choice((-1, 1))  # alternates every gate -> forces a genuine left-right zigzag
     while x < x1:
         z = FLIGHT_Z
         wall_height = random.uniform(*MAZE_WALL_HEIGHT)
         gap_width = random.uniform(*MAZE_GAP_WIDTH)
-        gap_center = random.uniform(*GAP_CENTER_RANGE)
+        gap_center = side * random.uniform(*GAP_SIDE_OFFSET)
+        side *= -1
         y0, y1 = CORRIDOR_Y_RANGE
         gap_start, gap_end = gap_center - gap_width / 2, gap_center + gap_width / 2
 
