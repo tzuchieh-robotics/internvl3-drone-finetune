@@ -3,7 +3,10 @@ Phase 1 of manual VLM training-data collection: fly manually with keyboard,
 save only the raw RGB scene frame + which key was held at that instant.
 No depth inference here on purpose, so the control loop stays responsive.
 
-Controls: W = forward, A = yaw left, D = yaw right, Esc = land + quit.
+Controls: W = forward, A = yaw left, D = yaw right, Up/Down arrows = ascend/descend,
+Esc = land + quit. Up/Down are for maneuvering around the varied-altitude obstacles
+only -- they don't get logged as training samples (the label schema only covers
+left/right/both, not climb/descend).
 Run process_flight_frames.py afterwards to turn these into labeled
 InternVL3 training samples.
 """
@@ -16,9 +19,10 @@ import cv2
 import numpy as np
 from pynput import keyboard
 
-SPEED = 3.0        # m/s, matches config.ini VELOCITY
-YAW_RATE = 10.0     # deg/s, matches config.ini YAW_ANGLE
-FLIGHT_HEIGHT = -8  # NED, matches config.ini FLIGHT_HEIGHT
+SPEED = 3.0          # m/s, matches config.ini VELOCITY
+YAW_RATE = 10.0       # deg/s, matches config.ini YAW_ANGLE
+VERTICAL_SPEED = 2.0  # m/s, ascend/descend -- not tied to config.ini, collection-only
+FLIGHT_HEIGHT = -8    # NED, matches config.ini FLIGHT_HEIGHT
 CONTROL_HZ = 10
 
 RAW_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_flight_raw")
@@ -52,6 +56,15 @@ def current_action():
     return None
 
 
+def current_vertical_speed():
+    # Up/down are for maneuvering only -- never returned as a logged "action".
+    if keyboard.Key.up in pressed:
+        return -VERTICAL_SPEED  # NED: negative = ascend
+    if keyboard.Key.down in pressed:
+        return VERTICAL_SPEED
+    return 0.0
+
+
 def main():
     session_id = time.strftime("%Y%m%d_%H%M%S")
     session_dir = os.path.join(RAW_ROOT, session_id)
@@ -70,7 +83,8 @@ def main():
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
 
-    print("Manual data collection: W=forward, A=yaw left, D=yaw right, Esc=land+quit")
+    print("Manual data collection: W=forward, A=yaw left, D=yaw right, "
+          "Up/Down=ascend/descend (not logged), Esc=land+quit")
     print(f"Saving raw frames to {session_dir}")
 
     with open(log_path, "w", newline="") as f:
@@ -81,6 +95,7 @@ def main():
     try:
         while listener.running:
             action = current_action()
+            vz = current_vertical_speed()
 
             vx, yaw_rate = 0.0, 0.0
             if action == "w":
@@ -91,7 +106,7 @@ def main():
                 yaw_rate = YAW_RATE
 
             client.moveByVelocityBodyFrameAsync(
-                vx, 0.0, 0.0, 1.0 / CONTROL_HZ,
+                vx, 0.0, vz, 1.0 / CONTROL_HZ,
                 yaw_mode=airsim.YawMode(is_rate=True, yaw_or_rate=yaw_rate),
             ).join()
 
