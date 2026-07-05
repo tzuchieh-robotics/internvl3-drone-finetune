@@ -2,6 +2,14 @@
 
 Used by `spawn_obstacles.py` in the Blocks AirSim environment.
 
+## Goal
+
+Train the drone to fly a roughly **straight line while continuously doing local
+obstacle avoidance** -- not maze-style navigation with long detours or dead ends.
+Density needs to stay high enough that a straight-ish path almost always has
+something nearby to dodge; sparse patches just waste collection time on plain
+"forward" frames.
+
 ## Reference sizes
 
 - **Drone** (AirSim SimpleFlight default quadrotor): approximately **0.98m x 0.98m x 0.29m**
@@ -12,30 +20,37 @@ Used by `spawn_obstacles.py` in the Blocks AirSim environment.
 - **Obstacles**: Cube/Cylinder/Cone/Sphere assets, where `scale=1` corresponds to roughly 1m,
   i.e. the same units as the drone size above.
 
-## Current settings (as of this commit)
+## Current layout: zoned corridor
 
-| Parameter | Value | Notes |
+The flight corridor (x = 10..800) is cut into 80-unit zones. Each zone is randomly assigned
+one of three layouts:
+
+| Zone type | Weight | Description |
 |---|---|---|
-| Obstacle count | 500 (target), ~460 actually placed | history: 10 → 300 (no gap check) → 1500 (no gap check, crashed the sim twice) → 500 with a gap check |
-| Scale range | 10 - 40 | ~10-40x the drone's own size; initial version used 1.0-1.5 |
-| X range | 10 - 800 | meters ahead of spawn |
-| Y range | -400 - 400 | meters left/right of spawn |
-| Z range | -30 - -2 | NED; nominal flight altitude is -8, so some obstacles float above/below cruise height instead of all sitting at flight level |
-| Minimum spacing | 4m clearance between obstacle edges | most obstacles keep a passable gap; up to 20 placement retries per obstacle before it's skipped |
-| Overlap chance | ~15% of obstacles | these skip the spacing check entirely and may cluster/overlap, for variety |
-| Spawn-point clearance | 15m + obstacle half-size | keeps the takeoff point clear so the camera never spawns inside a mesh (this caused an all-black camera feed once) |
-| Assets used | Cube, Cylinder, Cone, Sphere | all confirmed present via `simListAssets()` in this Blocks build |
+| `maze` | 50% | Walls perpendicular to the flight path, each with a single gap. The gap's Y position is kept close to the centerline (`GAP_CENTER_RANGE = (-15, 15)`) so the drone makes local dodges, not big detours. |
+| `forest` | 20% | Sparse tall, thin cylinders ("tree trunks", diameter 4-8, height 25-40) to weave between. |
+| `open` | 30% | Moderate-density random scatter (min 4m gap between edges, ~15% allowed to overlap/cluster), narrowed to `Y = (-40, 40)` so obstacles are actually near the flight path instead of scattered somewhere a straight flight would never reach. |
 
-## Rationale
-- Density and scale were increased in response to too few/too small obstacles in the default
-  Blocks map, which produced heavily imbalanced action labels (almost all "forward").
-- 1500 fully-random overlapping obstacles crashed the Blocks process twice — dialed back to 500
-  with a minimum-gap check (15% still allowed to overlap/cluster) for stability while keeping
-  most gaps flyable.
-- Z variation was added so obstacles aren't all at one altitude, adding vertical variety.
-  `collect_flight_frames.py` accordingly added Up/Down arrow key controls for ascend/descend so
-  the drone can maneuver around them — these are maneuvering-only and are not logged as training
-  samples (the label schema only covers left/right/both, not climb/descend).
+All obstacle centers vary in Z from -30 to -2 (NED); nominal flight altitude is -8, so some
+obstacles float above/below cruise height instead of all sitting at flight level.
+`collect_flight_frames.py` has Up/Down arrow key controls for ascend/descend to maneuver
+around these -- maneuvering only, not logged as training samples (the label schema only
+covers left/right/both, not climb/descend).
+
+## Spawn-point safety check
+
+A "too close to spawn" check keeps the takeoff point (0, 0, -8) clear so the camera never
+ends up inside a mesh. This is a proper **per-axis (AABB vs. point) check** -- each of x/y/z
+must clear `half-extent + 15m` independently. An earlier version used a single
+Euclidean-distance-vs-radius check, which under-detects overlap for elongated shapes: a maze
+wall (thin in x, long in y) can have its *center* far from the spawn point while its bounding
+box still spans across it. That bug caused two all-black-camera incidents before being fixed.
+
+## History
+- 10 → 300 (no gap check) → 1500 (no gap check, crashed the sim twice) → 500 with a min-gap
+  check → current zoned maze/forest/open system, added after realizing pure random scatter
+  didn't produce the "straight line + continuous local avoidance" training signal we actually
+  want.
 
 ## Re-running
 ```bash
@@ -43,3 +58,4 @@ cd vlm_nav   # needs an active AirSim/Blocks connection
 python spawn_obstacles.py
 ```
 Destroys any previously spawned `obs_*` objects first, then spawns a fresh batch.
+(A copy of this script also lives in this repo's `data_collection/`; keep both in sync.)

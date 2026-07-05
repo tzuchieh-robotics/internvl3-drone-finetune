@@ -2,6 +2,7 @@ work_dirs/
 data/images/*
 !data/images/.gitkeep
 data/train.jsonl
+data_collection/manual_flight_raw/
 __pycache__/
 *.pyc
 .DS_Store

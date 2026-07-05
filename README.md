@@ -17,6 +17,10 @@ indicating which direction is safe to fly.
   (`collect_flight_frames.py`), batch-label with DepthAnythingV2 (`process_flight_frames.py`),
   and spawn a dense obstacle field to fly through (`spawn_obstacles.py`, see
   `data_collection/OBSTACLE_CONFIG.md` for the drone/obstacle size reference and current settings)
+- `data_collection/manual_flight_raw/` — raw RGB frames per flight session (gitignored, stays
+  local); `process_flight_frames.py` reads from here and records which session/file each kept
+  training sample came from in `train.jsonl`'s `source` field, so you can trace a training
+  sample back to its original RGB frame
 
 ## Data format
 Each line of `data/train.jsonl`:

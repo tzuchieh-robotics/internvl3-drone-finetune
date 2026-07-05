@@ -29,9 +29,9 @@ from depth_anything_v2.dpt import DepthAnythingV2
 from depth_anything_v2.util.transform import NormalizeImage, PrepareForNet, Resize
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-RAW_ROOT = os.path.join(REPO_ROOT, "manual_flight_raw")
 
 TRAINING_REPO = r"C:\Users\User\internvl3-drone-finetune"
+RAW_ROOT = os.path.join(TRAINING_REPO, "data_collection", "manual_flight_raw")
 TRAINING_IMAGES_DIR = os.path.join(TRAINING_REPO, "data", "images")
 TRAINING_JSONL = os.path.join(TRAINING_REPO, "data", "train.jsonl")
 TRAINING_META = os.path.join(TRAINING_REPO, "data", "meta.json")
@@ -178,6 +178,10 @@ def main():
                     {"from": "human", "value": f"<image>\n{PROMPT}"},
                     {"from": "gpt", "value": json.dumps(label)},
                 ],
+                "source": {
+                    "session": os.path.basename(session_dir),
+                    "raw_file": row["filename"],
+                },
             }
             out_f.write(json.dumps(sample) + "\n")
             kept_counts[key] += 1

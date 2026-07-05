@@ -1,33 +1,60 @@
 """
-Clears previously spawned obstacles and spawns a moderate-density field of
-large obstacles for manual data collection. Most obstacles keep a minimum
-clearance from each other so passable gaps remain; a small fraction are
-deliberately allowed to cluster/overlap for variety.
+Clears previously spawned obstacles and spawns a structured obstacle course:
+the flight corridor (x: X_START..X_END) is cut into zones, each randomly
+assigned one of three layouts:
+  - "maze":  a series of walls perpendicular to the flight path, each with a
+             single gap at a random Y position (classic slalom/maze corridor)
+  - "forest": sparse tall, thin cylinders (tree trunks) to weave between
+  - "open":  the old moderate-density random scatter (some min-spacing,
+             ~15% allowed to overlap/cluster)
+Maze is the dominant layout; forest shows up occasionally.
 
 Reference sizes (see OBSTACLE_CONFIG.md for source/caveats):
   - Drone (AirSim SimpleFlight default quadrotor): ~0.98m x 0.98m x 0.29m (documented default, not empirically measured here)
-  - Obstacle scale range below is in the same meter units as the Cube/Cylinder/Cone/Sphere assets (scale=1 ~= 1m)
+  - scale=1 on the Cube/Cylinder/Cone/Sphere assets corresponds to roughly 1m, same units as the drone size above.
 """
 import random
 
 import cosysairsim as airsim
 
-NUM_OBSTACLES = 500              # previously 1500 (too dense, crashed the sim); dialed back
-SCALE_RANGE = (10, 40)           # unchanged: ~10-40x the drone's own size
-X_RANGE = (10, 800)
-Y_RANGE = (-400, 400)
-FLIGHT_Z = -8                    # nominal flight altitude (NED), kept for reference
-Z_RANGE = (-30, -2)               # obstacle centers vary from high up (-30) to near ground (-2),
-                                  # so some obstacles float above/below flight altitude instead of
-                                  # all sitting at the drone's cruise height
-ASSETS = ["Cube", "Cylinder", "Cone", "Sphere"]
+X_START, X_END = 10, 800
+ZONE_LENGTH = 80
+CORRIDOR_Y_RANGE = (-40, 40)   # wall/tree extents live in this band
+GAP_CENTER_RANGE = (-15, 15)   # maze gaps stay close to the centerline: local dodges, not big detours
+OPEN_Y_RANGE = (-40, 40)       # narrowed from +-400 so "open" obstacles are actually near the flight path
+                               # instead of scattered somewhere a mostly-straight flight would never reach
+Z_RANGE = (-30, -2)            # NED; nominal flight altitude is -8
+FLIGHT_Z = -8
 
-MIN_GAP = 4                # minimum clearance between obstacle edges, so gaps stay passable
-OVERLAP_CHANCE = 0.15       # fraction of obstacles allowed to skip the gap check and cluster/overlap
+# Goal: train straight-line flight with continuous local obstacle avoidance, not
+# maze-style detours/dead-ends. Density is kept high throughout so a roughly-straight
+# path almost always has something nearby to dodge -- sparse patches just waste
+# collection time on plain "forward" frames.
+ZONE_WEIGHTS = {"maze": 0.5, "forest": 0.2, "open": 0.3}
+
+# maze params
+MAZE_GATE_SPACING = 13     # distance between successive walls within a maze zone (denser than before)
+MAZE_GAP_WIDTH = (16, 24)  # opening width, wide enough for the drone plus maneuvering room
+MAZE_WALL_THICKNESS = 3
+MAZE_WALL_HEIGHT = (15, 25)
+
+# forest params
+FOREST_TRUNK_COUNT_PER_ZONE = (10, 18)
+FOREST_TRUNK_DIAMETER = (4, 8)
+FOREST_TRUNK_HEIGHT = (25, 40)
+FOREST_MIN_GAP = 5
+
+# open params (same as the previous moderate-density version)
+OPEN_OBSTACLES_PER_ZONE = (22, 35)
+OPEN_SCALE_RANGE = (10, 40)
+OPEN_MIN_GAP = 4
+OPEN_OVERLAP_CHANCE = 0.15
 MAX_ATTEMPTS_PER_OBSTACLE = 20
 
-SPAWN_POINT = (0, 0, -8)  # drone takeoff position, kept clear so the camera never spawns inside a mesh
-SPAWN_CLEARANCE = 15      # extra margin beyond the obstacle's own half-size
+ASSETS_OPEN = ["Cube", "Cylinder", "Cone", "Sphere"]
+
+SPAWN_POINT = (0, 0, -8)
+SPAWN_CLEARANCE = 15
 
 client = airsim.MultirotorClient()
 client.confirmConnection()
@@ -37,56 +64,114 @@ for name in existing:
     client.simDestroyObject(name)
 print(f"destroyed {len(existing)} previous obstacles")
 
-placed = []  # (x, y, z, half_size)
+obj_counter = 0
 spawned = 0
-skipped_spawn_point = 0
-skipped_no_room = 0
+skipped = 0
 
-for i in range(NUM_OBSTACLES):
-    allow_overlap = random.random() < OVERLAP_CHANCE
-    placed_ok = False
 
-    for _ in range(MAX_ATTEMPTS_PER_OBSTACLE):
-        x = random.uniform(*X_RANGE)
-        y = random.uniform(*Y_RANGE)
-        z = random.uniform(*Z_RANGE)
-        scale = random.uniform(*SCALE_RANGE)
-        half_size = scale * 0.5
+def too_close_to_spawn(x, y, z, half_x, half_y, half_z):
+    # Proper per-axis (AABB vs point) check -- a single Euclidean-distance-vs-radius
+    # check underestimates overlap for elongated shapes like maze walls (thin in x,
+    # very long in y): a wall can have its center far from the spawn point yet still
+    # span across it. All three axes must clear for the obstacle to count as "safe".
+    return (abs(x - SPAWN_POINT[0]) < half_x + SPAWN_CLEARANCE
+            and abs(y - SPAWN_POINT[1]) < half_y + SPAWN_CLEARANCE
+            and abs(z - SPAWN_POINT[2]) < half_z + SPAWN_CLEARANCE)
 
-        dist_to_spawn = ((x - SPAWN_POINT[0]) ** 2 + (y - SPAWN_POINT[1]) ** 2 + (z - SPAWN_POINT[2]) ** 2) ** 0.5
-        if dist_to_spawn < (half_size + SPAWN_CLEARANCE):
-            continue
 
-        if not allow_overlap:
-            too_close = False
-            for px, py, pz, phalf in placed:
-                if (abs(x - px) < (half_size + phalf + MIN_GAP)
-                        and abs(y - py) < (half_size + phalf + MIN_GAP)
-                        and abs(z - pz) < (half_size + phalf + MIN_GAP)):
-                    too_close = True
-                    break
-            if too_close:
-                continue
-
-        placed_ok = True
-        break
-
-    if not placed_ok:
-        skipped_no_room += 1
-        continue
-
-    asset = random.choice(ASSETS)
-    name = f"obs_{i:04d}_{asset.lower()}"
+def spawn_box(x, y, z, scale_xyz, asset="Cube"):
+    global obj_counter, spawned
+    name = f"obs_{obj_counter:04d}_{asset.lower()}"
+    obj_counter += 1
     pose = airsim.Pose(airsim.Vector3r(x, y, z), airsim.Quaternionr(0, 0, 0, 1))
+    scale = airsim.Vector3r(*scale_xyz)
     try:
-        client.simSpawnObject(name, asset, pose, airsim.Vector3r(scale, scale, scale), physics_enabled=False)
-        placed.append((x, y, z, half_size))
+        client.simSpawnObject(name, asset, pose, scale, physics_enabled=False)
         spawned += 1
-        if spawned % 100 == 0:
-            print(f"spawned {spawned}/{NUM_OBSTACLES}")
     except Exception as e:
         print(f"failed to spawn {name}: {e}")
 
-print(f"skipped {skipped_no_room} obstacles (couldn't find room after {MAX_ATTEMPTS_PER_OBSTACLE} tries each)")
-print(f"Done. Spawned {spawned}/{NUM_OBSTACLES} obstacles (scale {SCALE_RANGE[0]}-{SCALE_RANGE[1]}, "
-      f"area x={X_RANGE} y={Y_RANGE} z={Z_RANGE}, min_gap={MIN_GAP}, ~{int(OVERLAP_CHANCE*100)}% allowed to overlap).")
+
+def spawn_maze_zone(x0, x1):
+    x = x0 + MAZE_GATE_SPACING / 2
+    while x < x1:
+        z = FLIGHT_Z
+        wall_height = random.uniform(*MAZE_WALL_HEIGHT)
+        gap_width = random.uniform(*MAZE_GAP_WIDTH)
+        gap_center = random.uniform(*GAP_CENTER_RANGE)
+        y0, y1 = CORRIDOR_Y_RANGE
+        gap_start, gap_end = gap_center - gap_width / 2, gap_center + gap_width / 2
+
+        for seg_y0, seg_y1 in ((y0, gap_start), (gap_end, y1)):
+            length = seg_y1 - seg_y0
+            if length <= 1:
+                continue
+            center_y = (seg_y0 + seg_y1) / 2
+            if too_close_to_spawn(x, center_y, z, MAZE_WALL_THICKNESS / 2, length / 2, wall_height / 2):
+                continue
+            spawn_box(x, center_y, z, (MAZE_WALL_THICKNESS, length, wall_height))
+        x += MAZE_GATE_SPACING
+
+
+def spawn_forest_zone(x0, x1):
+    n = random.randint(*FOREST_TRUNK_COUNT_PER_ZONE)
+    placed = []
+    for _ in range(n):
+        for _ in range(MAX_ATTEMPTS_PER_OBSTACLE):
+            x = random.uniform(x0, x1)
+            y = random.uniform(*CORRIDOR_Y_RANGE)
+            diameter = random.uniform(*FOREST_TRUNK_DIAMETER)
+            height = random.uniform(*FOREST_TRUNK_HEIGHT)
+            half = diameter / 2
+            if too_close_to_spawn(x, y, FLIGHT_Z, half, half, height / 2):
+                continue
+            if any(abs(x - px) < (half + phalf + FOREST_MIN_GAP) and abs(y - py) < (half + phalf + FOREST_MIN_GAP)
+                   for px, py, phalf in placed):
+                continue
+            spawn_box(x, y, FLIGHT_Z, (diameter, diameter, height), asset="Cylinder")
+            placed.append((x, y, half))
+            break
+
+
+def spawn_open_zone(x0, x1):
+    n = random.randint(*OPEN_OBSTACLES_PER_ZONE)
+    placed = []
+    for _ in range(n):
+        allow_overlap = random.random() < OPEN_OVERLAP_CHANCE
+        for _ in range(MAX_ATTEMPTS_PER_OBSTACLE):
+            x = random.uniform(x0, x1)
+            y = random.uniform(*OPEN_Y_RANGE)
+            z = random.uniform(*Z_RANGE)
+            scale = random.uniform(*OPEN_SCALE_RANGE)
+            half = scale / 2
+            if too_close_to_spawn(x, y, z, half, half, half):
+                continue
+            if not allow_overlap and any(
+                abs(x - px) < (half + phalf + OPEN_MIN_GAP)
+                and abs(y - py) < (half + phalf + OPEN_MIN_GAP)
+                and abs(z - pz) < (half + phalf + OPEN_MIN_GAP)
+                for px, py, pz, phalf in placed
+            ):
+                continue
+            asset = random.choice(ASSETS_OPEN)
+            spawn_box(x, y, z, (scale, scale, scale), asset=asset)
+            placed.append((x, y, z, half))
+            break
+
+
+zone_x = X_START
+zone_log = []
+while zone_x < X_END:
+    x1 = min(zone_x + ZONE_LENGTH, X_END)
+    zone_type = random.choices(list(ZONE_WEIGHTS), weights=list(ZONE_WEIGHTS.values()))[0]
+    zone_log.append(zone_type)
+    if zone_type == "maze":
+        spawn_maze_zone(zone_x, x1)
+    elif zone_type == "forest":
+        spawn_forest_zone(zone_x, x1)
+    else:
+        spawn_open_zone(zone_x, x1)
+    zone_x = x1
+
+print(f"zones ({len(zone_log)}): {zone_log}")
+print(f"Done. Spawned {spawned} obstacles across x={X_START}-{X_END}.")

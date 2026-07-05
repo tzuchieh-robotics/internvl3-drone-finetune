@@ -25,7 +25,7 @@ VERTICAL_SPEED = 2.0  # m/s, ascend/descend -- not tied to config.ini, collectio
 FLIGHT_HEIGHT = -8    # NED, matches config.ini FLIGHT_HEIGHT
 CONTROL_HZ = 10
 
-RAW_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "manual_flight_raw")
+RAW_ROOT = r"C:\Users\User\internvl3-drone-finetune\data_collection\manual_flight_raw"
 os.makedirs(RAW_ROOT, exist_ok=True)
 
 pressed = set()
