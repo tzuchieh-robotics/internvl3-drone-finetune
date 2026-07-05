@@ -38,7 +38,7 @@ FLIGHT_Z = -8
 # unlike maze (always has an explicit cut gap) or forest (sparse individual trunks),
 # a cluster of "open" boxes could randomly seal off the whole corridor with no path
 # through, which happened during testing. maze/forest both guarantee passability.
-ZONE_WEIGHTS = {"maze": 0.7, "forest": 0.3}
+ZONE_WEIGHTS = {"forest": 1.0}
 
 # maze params
 MAZE_GATE_SPACING = 13     # distance between successive walls within a maze zone (denser than before)
@@ -47,7 +47,7 @@ MAZE_WALL_THICKNESS = 3
 MAZE_WALL_HEIGHT = (15, 25)
 
 # forest params
-FOREST_TRUNK_COUNT_PER_ZONE = (10, 18)
+FOREST_TRUNK_COUNT_PER_ZONE = (16, 26)  # bumped up from (10, 18) for higher density
 FOREST_TRUNK_DIAMETER = (4, 8)
 FOREST_TRUNK_HEIGHT = (25, 40)
 FOREST_MIN_GAP = 5
