@@ -33,7 +33,12 @@ FLIGHT_Z = -8
 # maze-style detours/dead-ends. Density is kept high throughout so a roughly-straight
 # path almost always has something nearby to dodge -- sparse patches just waste
 # collection time on plain "forward" frames.
-ZONE_WEIGHTS = {"maze": 0.5, "forest": 0.2, "open": 0.3}
+#
+# "open" zones (wide random scatter, no structural gap guarantee) were dropped:
+# unlike maze (always has an explicit cut gap) or forest (sparse individual trunks),
+# a cluster of "open" boxes could randomly seal off the whole corridor with no path
+# through, which happened during testing. maze/forest both guarantee passability.
+ZONE_WEIGHTS = {"maze": 0.7, "forest": 0.3}
 
 # maze params
 MAZE_GATE_SPACING = 13     # distance between successive walls within a maze zone (denser than before)
