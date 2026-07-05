@@ -19,8 +19,8 @@ import cv2
 import numpy as np
 from pynput import keyboard
 
-SPEED = 3.0          # m/s, matches config.ini VELOCITY
-YAW_RATE = 10.0       # deg/s, matches config.ini YAW_ANGLE
+SPEED = 4.0          # m/s, slightly faster forward speed than config.ini's VELOCITY (3.0)
+YAW_RATE = 40.0       # deg/s, much faster turning than config.ini's YAW_ANGLE (10.0)
 VERTICAL_SPEED = 2.0  # m/s, ascend/descend -- not tied to config.ini, collection-only
 FLIGHT_HEIGHT = -8    # NED, matches config.ini FLIGHT_HEIGHT
 CONTROL_HZ = 10
