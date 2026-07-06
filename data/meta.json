@@ -4,6 +4,6 @@
     "annotation": "data/train.jsonl",
     "data_augment": false,
     "repeat_time": 1,
-    "length": 0
+    "length": 5155
   }
 }
