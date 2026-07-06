@@ -6,7 +6,9 @@ assigned one of three layouts:
              single gap that alternates side (left/right of centerline) every
              gate, so there's never a straight line down the middle -- a real
              zigzag/slalom corridor
-  - "forest": sparse tall, thin cylinders (tree trunks) to weave between
+  - "forest": tall trunks to weave between -- mostly cylinders, with a fraction
+             (FOREST_WALL_CHANCE) swapped for short standalone wall segments
+             for variety
   - "open":  the old moderate-density random scatter (some min-spacing,
              ~15% allowed to overlap/cluster)
 Maze is the dominant layout; forest shows up occasionally.
@@ -51,6 +53,9 @@ FOREST_TRUNK_COUNT_PER_ZONE = (65, 90)  # (10,18) -> (16,26) -> (30,45) -> (45,6
 FOREST_TRUNK_DIAMETER = (4, 8)
 FOREST_TRUNK_HEIGHT = (25, 40)
 FOREST_MIN_GAP = 1.5  # tightened again from 2
+FOREST_WALL_CHANCE = 0.3          # fraction of "trunks" that are short standalone wall segments instead
+FOREST_WALL_THICKNESS = (3, 5)
+FOREST_WALL_WIDTH = (8, 20)       # short, not a full corridor-spanning maze wall
 
 # open params (same as the previous moderate-density version)
 OPEN_OBSTACLES_PER_ZONE = (22, 35)
@@ -125,21 +130,30 @@ def spawn_maze_zone(x0, x1):
 
 def spawn_forest_zone(x0, x1):
     n = random.randint(*FOREST_TRUNK_COUNT_PER_ZONE)
-    placed = []
+    placed = []  # (x, y, half_x, half_y)
     for _ in range(n):
         for _ in range(MAX_ATTEMPTS_PER_OBSTACLE):
             x = random.uniform(x0, x1)
             y = random.uniform(*CORRIDOR_Y_RANGE)
-            diameter = random.uniform(*FOREST_TRUNK_DIAMETER)
             height = random.uniform(*FOREST_TRUNK_HEIGHT)
-            half = diameter / 2
-            if too_close_to_spawn(x, y, FLIGHT_Z, half, half, height / 2):
+
+            if random.random() < FOREST_WALL_CHANCE:
+                thickness = random.uniform(*FOREST_WALL_THICKNESS)
+                width = random.uniform(*FOREST_WALL_WIDTH)
+                half_x, half_y = thickness / 2, width / 2
+                scale_xyz, asset = (thickness, width, height), "Cube"
+            else:
+                diameter = random.uniform(*FOREST_TRUNK_DIAMETER)
+                half_x = half_y = diameter / 2
+                scale_xyz, asset = (diameter, diameter, height), "Cylinder"
+
+            if too_close_to_spawn(x, y, FLIGHT_Z, half_x, half_y, height / 2):
                 continue
-            if any(abs(x - px) < (half + phalf + FOREST_MIN_GAP) and abs(y - py) < (half + phalf + FOREST_MIN_GAP)
-                   for px, py, phalf in placed):
+            if any(abs(x - px) < (half_x + phx + FOREST_MIN_GAP) and abs(y - py) < (half_y + phy + FOREST_MIN_GAP)
+                   for px, py, phx, phy in placed):
                 continue
-            spawn_box(x, y, FLIGHT_Z, (diameter, diameter, height), asset="Cylinder")
-            placed.append((x, y, half))
+            spawn_box(x, y, FLIGHT_Z, scale_xyz, asset=asset)
+            placed.append((x, y, half_x, half_y))
             break
 
 
