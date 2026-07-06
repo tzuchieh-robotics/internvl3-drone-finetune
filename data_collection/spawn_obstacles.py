@@ -47,10 +47,10 @@ MAZE_WALL_THICKNESS = 3
 MAZE_WALL_HEIGHT = (15, 25)
 
 # forest params
-FOREST_TRUNK_COUNT_PER_ZONE = (16, 26)  # bumped up from (10, 18) for higher density
+FOREST_TRUNK_COUNT_PER_ZONE = (30, 45)  # bumped up again from (16, 26): (10,18) -> (16,26) -> (30,45)
 FOREST_TRUNK_DIAMETER = (4, 8)
 FOREST_TRUNK_HEIGHT = (25, 40)
-FOREST_MIN_GAP = 5
+FOREST_MIN_GAP = 3  # tightened from 5 so more trunks fit per zone
 
 # open params (same as the previous moderate-density version)
 OPEN_OBSTACLES_PER_ZONE = (22, 35)
